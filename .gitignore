@@ -1,0 +1,27 @@
+# === 자동화 워크플로우 런타임 ===
+.ralph/tasks/
+.ralph/fix_plan.md
+.ralph/.pipeline_lock
+.ralph/.task_mapping.json
+.ralph/.task_mapping_full.json
+.ralph/.iteration_count
+.ralph/.pipeline_result.json
+.ralph/.task_list.tmp
+logs/
+.worktrees/
+.env
+
+# === Python ===
+__pycache__/
+*.pyc
+
+# === IDE ===
+.idea/
+.vscode/
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Claude Code ===
+.claude/settings.local.json

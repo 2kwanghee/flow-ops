@@ -1,0 +1,103 @@
+name: Post-Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  post-merge:
+    name: Post-Merge Cleanup
+    runs-on: ubuntu-latest
+    # 머지된 PR만 (닫힌 것 제외)
+    if: github.event.pull_request.merged == true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Extract Linear issue ID
+        id: linear
+        run: |
+          # PR body에서 Linear 이슈 식별자 추출 (OPS-123 패턴)
+          BODY="${{ github.event.pull_request.body }}"
+          ISSUE_ID=$(echo "$BODY" | grep -oP '[A-Z]+-\d+' | head -1 || echo "")
+          echo "issue_id=$ISSUE_ID" >> $GITHUB_OUTPUT
+          echo "Extracted Linear issue: $ISSUE_ID"
+
+      - name: Update Linear issue to Done
+        if: steps.linear.outputs.issue_id != ''
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_TEAM_ID: ${{ secrets.LINEAR_TEAM_ID }}
+        run: |
+          # Linear 이슈를 Done 상태로 업데이트
+          python3 -c "
+          import os, sys
+          sys.path.insert(0, 'scripts')
+          from linear_client import get_env, find_state_id, linear_request
+
+          api_key = os.environ['LINEAR_API_KEY']
+          team_id = os.environ['LINEAR_TEAM_ID']
+
+          # identifier로 이슈 ID 조회
+          identifier = '${{ steps.linear.outputs.issue_id }}'
+          query = '''
+          query(\$filter: IssueFilter!) {
+              issues(filter: \$filter, first: 1) {
+                  nodes { id identifier state { name } }
+              }
+          }
+          '''
+          data = linear_request(api_key, query, {
+              'filter': {'identifier': {'eq': identifier}}
+          })
+          if not data or not data.get('issues', {}).get('nodes'):
+              print(f'Linear issue {identifier} not found')
+              sys.exit(0)
+
+          issue = data['issues']['nodes'][0]
+          issue_id = issue['id']
+          current_state = issue.get('state', {}).get('name', '')
+
+          if current_state == 'Done':
+              print(f'{identifier} already Done')
+              sys.exit(0)
+
+          # Done 상태로 변경
+          state_id = find_state_id(api_key, team_id, 'Done')
+          if not state_id:
+              print('Done state not found')
+              sys.exit(1)
+
+          mutation = '''
+          mutation(\$issueId: String!, \$stateId: String!) {
+              issueUpdate(id: \$issueId, input: { stateId: \$stateId }) {
+                  issue { id identifier state { name } }
+              }
+          }
+          '''
+          result = linear_request(api_key, mutation, {
+              'issueId': issue_id,
+              'stateId': state_id,
+          })
+          if result:
+              print(f'UPDATED: {identifier} → Done')
+          "
+
+      - name: Send Telegram notification
+        if: steps.linear.outputs.issue_id != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python3 scripts/telegram_notify.py \
+            --message "✅ *머지 완료*
+          PR: ${{ github.event.pull_request.title }}
+          이슈: ${{ steps.linear.outputs.issue_id }}
+          브랜치: ${{ github.head_ref }} → main" \
+            2>/dev/null || true
