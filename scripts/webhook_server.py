@@ -83,14 +83,22 @@ def trigger_pipeline():
         os.makedirs(log_dir, exist_ok=True)
         log_file = os.path.join(log_dir, f"pipeline_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
 
-        with open(log_file, "w") as lf:
-            proc = subprocess.Popen(
-                ["bash", pipeline_path],
-                stdout=lf, stderr=subprocess.STDOUT,
-                cwd=PROJECT_DIR,
-            )
+        lf = open(log_file, "w")
+        proc = subprocess.Popen(
+            ["bash", pipeline_path],
+            stdout=lf, stderr=subprocess.STDOUT,
+            cwd=PROJECT_DIR,
+        )
 
         log(f"STARTED: PID {proc.pid}, 로그: {log_file}")
+
+        # 좀비 프로세스 방지: 별도 스레드에서 wait + 파일 핸들 정리
+        def _reap(p, f):
+            p.wait()
+            f.close()
+            log(f"REAPED: PID {p.pid}, exit={p.returncode}")
+
+        threading.Thread(target=_reap, args=(proc, lf), daemon=True).start()
 
     finally:
         _pipeline_lock.release()
@@ -110,16 +118,23 @@ def trigger_confirmer():
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "confirmer.log")
 
-    with open(log_file, "a") as lf:
-        lf.write(f"\n--- {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---\n")
-        lf.flush()
-        proc = subprocess.Popen(
-            ["python3", confirmer_path],
-            stdout=lf, stderr=subprocess.STDOUT,
-            cwd=PROJECT_DIR,
-        )
+    lf = open(log_file, "a")
+    lf.write(f"\n--- {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+    lf.flush()
+    proc = subprocess.Popen(
+        ["python3", confirmer_path],
+        stdout=lf, stderr=subprocess.STDOUT,
+        cwd=PROJECT_DIR,
+    )
 
     log(f"STARTED: confirmer PID {proc.pid}, 로그: {log_file}")
+
+    def _reap(p, f):
+        p.wait()
+        f.close()
+        log(f"REAPED: confirmer PID {p.pid}, exit={p.returncode}")
+
+    threading.Thread(target=_reap, args=(proc, lf), daemon=True).start()
 
 
 class WebhookHandler(BaseHTTPRequestHandler):

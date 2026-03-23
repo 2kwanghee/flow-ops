@@ -93,10 +93,6 @@ def parse_fix_plan() -> dict:
 
     sections = {}
     for priority in ["P1", "P2", "P3"]:
-        done = len(re.findall(rf"^- \[x\].*", content, re.MULTILINE))
-        incomplete = len(re.findall(rf"^- \[ \].*", content, re.MULTILINE))
-
-        # Extract section-specific counts
         pattern = rf"## {priority}:.*?(?=## |\Z)"
         match = re.search(pattern, content, re.DOTALL)
         if match:

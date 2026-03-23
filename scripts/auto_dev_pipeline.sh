@@ -56,7 +56,19 @@ if [ -f "$LOCK_FILE" ]; then
 fi
 
 echo $$ > "$LOCK_FILE"
-trap 'rm -f "$LOCK_FILE"' EXIT
+
+cleanup() {
+  rm -f "$LOCK_FILE"
+  # 비정상 종료 시 잔류 worktree 정리
+  if [ -d "${WORKTREE_BASE:-}" ]; then
+    for dir in "$WORKTREE_BASE"/*/; do
+      [ -d "$dir" ] && git worktree remove "$dir" --force 2>/dev/null || true
+    done
+    rmdir "$WORKTREE_BASE" 2>/dev/null || true
+  fi
+  rm -f "${TASK_LIST_FILE:-}" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 echo "$LOG_PREFIX ======================================="
 echo "$LOG_PREFIX   자동 개발 파이프라인 v4 시작"
@@ -102,7 +114,11 @@ MAIN_BRANCH="main"
 WORKTREE_BASE="$PROJECT_DIR/.worktrees"
 mkdir -p "$WORKTREE_BASE"
 
-# task_mapping을 백업 (전체 버전 보존)
+# task_mapping 존재 확인 및 백업
+if [ ! -f "$TASK_MAPPING" ]; then
+  echo "$LOG_PREFIX ERROR: $TASK_MAPPING 파일이 존재하지 않습니다."
+  exit 1
+fi
 cp "$TASK_MAPPING" ".ralph/.task_mapping_full.json"
 
 # 태스크 목록을 임시 파일로 추출 (subshell 문제 회피)

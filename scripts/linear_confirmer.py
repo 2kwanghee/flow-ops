@@ -220,7 +220,10 @@ def main():
                 merged_tasks.append(task)
             else:
                 print(f"   ERROR: 머지 실패 — {output}")
-                git_run("merge", "--abort")
+                # 진행 중인 머지가 있을 때만 abort 시도
+                abort_code, _ = git_run("merge", "--abort")
+                if abort_code != 0:
+                    print(f"   WARN: merge --abort 불필요 (진행 중인 머지 없음)")
                 skipped_tasks.append(task)
 
     # 3. 결과 요약
