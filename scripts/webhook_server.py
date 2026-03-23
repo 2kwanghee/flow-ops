@@ -96,6 +96,32 @@ def trigger_pipeline():
         _pipeline_lock.release()
 
 
+def trigger_confirmer():
+    """linear_confirmer.py를 백그라운드로 실행."""
+    confirmer_path = os.path.join(PROJECT_DIR, "scripts", "linear_confirmer.py")
+
+    if DRY_RUN:
+        log("DRY-RUN: confirmer 트리거 (실행 안 함)")
+        return
+
+    log("TRIGGER: linear_confirmer.py 실행 시작")
+
+    log_dir = os.path.join(PROJECT_DIR, "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, "confirmer.log")
+
+    with open(log_file, "a") as lf:
+        lf.write(f"\n--- {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+        lf.flush()
+        proc = subprocess.Popen(
+            ["python3", confirmer_path],
+            stdout=lf, stderr=subprocess.STDOUT,
+            cwd=PROJECT_DIR,
+        )
+
+    log(f"STARTED: confirmer PID {proc.pid}, 로그: {log_file}")
+
+
 class WebhookHandler(BaseHTTPRequestHandler):
     """Linear Webhook HTTP 핸들러."""
 
@@ -155,17 +181,17 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
         log(f"EVENT: {action} {identifier} '{title}' → {state_name}")
 
-        # 상태가 Queued로 변경된 경우만 트리거
-        if action == "update" and state_name == "Queued":
+        # 상태별 트리거
+        if state_name == "Queued" and action in ("update", "create"):
             log(f"QUEUED: {identifier} — 파이프라인 트리거")
             thread = threading.Thread(target=trigger_pipeline, daemon=True)
             thread.start()
-        elif action == "create" and state_name == "Queued":
-            log(f"CREATED (Queued): {identifier} — 파이프라인 트리거")
-            thread = threading.Thread(target=trigger_pipeline, daemon=True)
+        elif state_name == "Confirm" and action == "update":
+            log(f"CONFIRM: {identifier} — confirmer 트리거")
+            thread = threading.Thread(target=trigger_confirmer, daemon=True)
             thread.start()
         else:
-            log(f"SKIP: {identifier} 상태={state_name} (Queued 아님)")
+            log(f"SKIP: {identifier} 상태={state_name}")
 
     def _respond(self, status: int, body: dict):
         self.send_response(status)

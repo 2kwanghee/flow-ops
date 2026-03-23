@@ -285,12 +285,4 @@ Linear Webhook 등록 방법:
 
 ## 트러블슈팅
 
-| 문제 | 해결 |
-|------|------|
-| `LINEAR_API_KEY required` | `.claude/settings.json`의 env에 키 설정 확인 |
-| `graphql error: String! vs ID!` | `team(id:)` → `String!`, `filter: team.id.eq` → `ID!` (스크립트 최신 버전 확인) |
-| `gh: command not found` | `sudo apt install gh` 또는 https://cli.github.com |
-| `ngrok: command not found` | Step 6 참조 |
-| Webhook URL 변경 | ngrok 무료 플랜은 재시작 시 URL 변경됨 → Linear Webhook URL 업데이트 필요 |
-| 파이프라인 중복 실행 | `.ralph/.pipeline_lock` 확인 → 프로세스 없으면 삭제 |
-| Linear에 Queued 상태 없음 | Step 4에서 자동 생성됨 |
+[docs/setupClaude.md](setupClaude.md) 섹션 13(트러블슈팅)을 참조하세요.

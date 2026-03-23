@@ -33,7 +33,7 @@ def fetch_confirmed_issues(api_key: str, team_id: str) -> list[dict]:
                 team: { id: { eq: $teamId } }
                 state: { name: { eq: "Confirm" } }
             }
-            orderBy: priority
+            orderBy: createdAt
         ) {
             nodes {
                 id
@@ -130,6 +130,10 @@ def add_merge_comment(api_key: str, issue_id: str, branch: str):
 
 
 def send_telegram(message: str):
+    from pipeline_config import is_enabled
+
+    if not is_enabled("FLOWOPS_TELEGRAM"):
+        return
     try:
         subprocess.run(
             ["python3", os.path.join(PROJECT_DIR, "scripts", "telegram_notify.py"),
@@ -142,6 +146,9 @@ def send_telegram(message: str):
 
 def main():
     import argparse
+    from pipeline_config import check_enabled
+
+    check_enabled("FLOWOPS_LINEAR_CONFIRM", "Linear Confirm 자동 머지")
 
     parser = argparse.ArgumentParser(description="Linear Confirm → main 머지")
     parser.add_argument("--dry-run", action="store_true", help="조회만 수행, 머지 없음")

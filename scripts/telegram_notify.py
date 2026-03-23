@@ -21,7 +21,7 @@ import os
 import re
 import subprocess
 import sys
-from datetime import date
+from datetime import date, datetime
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -42,7 +42,7 @@ def get_env():
                 if line.startswith("#") or "=" not in line:
                     continue
                 k, v = line.split("=", 1)
-                k, v = k.strip(), v.strip()
+                k, v = k.strip(), v.strip().strip("\"'")
                 if k == "TELEGRAM_BOT_TOKEN":
                     token = v
                 elif k == "TELEGRAM_CHAT_ID":
@@ -187,54 +187,72 @@ def build_ralph_report(iterations: str | None = None, test_result: str | None = 
     """Build a detailed Ralph Loop completion report."""
     plan = parse_fix_plan()
     detailed = parse_fix_plan_detailed()
-    today = date.today().isoformat()
+    now = datetime.now()
+
+    done = sum(1 for i in detailed["items"] if i["status"] == "done")
+    skipped = sum(1 for i in detailed["items"] if i["status"] == "skipped")
+    incomplete = sum(1 for i in detailed["items"] if i["status"] == "incomplete")
+    total = len(detailed["items"])
+
+    # 결과 이모지
+    if incomplete == 0 and total > 0:
+        result_emoji = "🟢"
+        result_text = "전체 완료"
+    elif incomplete > 0 and done > 0:
+        result_emoji = "🟡"
+        result_text = "부분 완료"
+    else:
+        result_emoji = "🔴"
+        result_text = "미완료"
 
     lines = []
-    lines.append("*🤖 Ralph Loop 완료 보고*")
-    lines.append(f"📅 {today}")
-    lines.append("")
-
-    # 작업 항목별 상세 현황
-    lines.append("*📋 작업 상세*")
-    for item in detailed["items"]:
-        if item["status"] == "done":
-            emoji = "✅"
-        elif item["status"] == "skipped":
-            emoji = "⚠️"
-        else:
-            emoji = "❌"
-        lines.append(f"  {emoji} [{item['priority']}] {item['title']}")
-    lines.append("")
-
-    # 통계
-    done = sum(1 for i in detailed["items"] if i["status"] == "done")
-    total = len(detailed["items"])
-    lines.append(f"*📊 진행률: {done}/{total}*")
-
+    lines.append(f"{result_emoji} *Ralph Loop — {result_text}*")
+    lines.append(f"━━━━━━━━━━━━━━━━━━━━")
+    lines.append(f"🕐 {now.strftime('%Y-%m-%d %H:%M')}")
     if iterations:
-        lines.append(f"🔄 반복: {iterations}회")
+        lines.append(f"🔄 반복 횟수: {iterations}회")
+    lines.append("")
+
+    # 작업 현황
+    if detailed["items"]:
+        lines.append("📋 *작업 현황*")
+        lines.append("─────────────────")
+        current_priority = None
+        for item in detailed["items"]:
+            if item["priority"] != current_priority:
+                current_priority = item["priority"]
+                lines.append(f"  *{current_priority}*")
+            if item["status"] == "done":
+                lines.append(f"    ✅ {item['title']}")
+            elif item["status"] == "skipped":
+                lines.append(f"    ⏭ {item['title']}")
+            else:
+                lines.append(f"    ❌ {item['title']}")
+        lines.append("")
+
+    # 요약 통계
+    lines.append("📊 *결과 요약*")
+    lines.append("─────────────────")
+    lines.append(f"  완료: {done}건  |  미완료: {incomplete}건  |  스킵: {skipped}건")
 
     if test_result:
-        lines.append(f"🧪 테스트: {test_result}")
+        lines.append(f"  테스트: {test_result}")
 
-    # 변경 파일 요약
     file_summary = get_changed_files_summary()
     if file_summary:
-        lines.append(f"📁 변경: {file_summary}")
+        lines.append(f"  파일: {file_summary}")
 
     # 최근 커밋
     commits = get_recent_commits(5)
     if commits:
         lines.append("")
-        lines.append("*🔨 주요 커밋*")
+        lines.append("🔨 *주요 커밋*")
+        lines.append("─────────────────")
         for c in commits:
-            lines.append(f"  • {c}")
+            lines.append(f"  `{c}`")
 
     lines.append("")
-    if plan["incomplete"] == 0 and total > 0:
-        lines.append("🎉 *모든 작업 완료!*")
-    elif plan["incomplete"] > 0:
-        lines.append(f"⏳ 미완료 {plan['incomplete']}개 남음")
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
 
     return "\n".join(lines)
 
@@ -265,15 +283,24 @@ def cmd_ralph_report(args):
         sys.exit(1)
 
 
+def load_task_mapping_for_report() -> dict:
+    """Load task_mapping.json for enriching reports with issue metadata."""
+    mapping_path = os.path.join(os.path.dirname(__file__), "..", ".ralph", ".task_mapping.json")
+    if os.path.exists(mapping_path):
+        with open(mapping_path) as f:
+            return json.load(f)
+    return {}
+
+
 def build_pipeline_report(iterations: str | None = None, test_result: str | None = None) -> str:
     """Build a detailed pipeline completion report from .pipeline_result.json."""
     result_path = os.path.join(os.path.dirname(__file__), "..", ".ralph", ".pipeline_result.json")
-    today = date.today().isoformat()
+    task_mapping = load_task_mapping_for_report()
+    now = datetime.now()
 
-    lines = []
-    lines.append("*🚀 자동 개발 파이프라인 완료*")
-    lines.append(f"📅 {today}")
-    lines.append("")
+    done_count = 0
+    fail_count = 0
+    task_lines = []
 
     # .pipeline_result.json이 있으면 상세 정보 사용
     if os.path.exists(result_path):
@@ -284,78 +311,106 @@ def build_pipeline_report(iterations: str | None = None, test_result: str | None
         done_count = data.get("done_count", 0)
         fail_count = data.get("fail_count", 0)
 
-        lines.append("*📋 요구사항 처리 결과*")
         for title, info in tasks.items():
             priority = info.get("priority", "P2")
             status = info.get("status", "incomplete")
             details = info.get("details", [])
+            meta = task_mapping.get(title, {})
+            identifier = meta.get("identifier", "")
+            branch = meta.get("branch", "")
 
             if status == "done":
                 emoji = "✅"
-                status_text = "완료"
             elif status == "skipped":
-                emoji = "⚠️"
-                status_text = "건너뜀"
+                emoji = "⏭"
             else:
                 emoji = "❌"
-                status_text = "미완료"
 
-            lines.append(f"  {emoji} *[{priority}] {title}* — {status_text}")
+            # 이슈 ID + 제목
+            id_prefix = f"`{identifier}` " if identifier else ""
+            task_lines.append(f"  {emoji} {id_prefix}*{title}*")
+
+            # 브랜치 정보
+            if branch:
+                task_lines.append(f"      📌 `{branch}`")
 
             # 구현 상세 (최대 3줄)
             for detail in details[:3]:
-                lines.append(f"      └ {detail}")
-
-        lines.append("")
-        lines.append(f"*📊 결과: 완료 {done_count}건 / 실패 {fail_count}건*")
+                task_lines.append(f"      └ {detail}")
     else:
         # fallback: fix_plan.md 기반
         detailed = parse_fix_plan_detailed()
-        lines.append("*📋 작업 상세*")
         for item in detailed["items"]:
             if item["status"] == "done":
                 emoji = "✅"
+                done_count += 1
             elif item["status"] == "skipped":
-                emoji = "⚠️"
+                emoji = "⏭"
             else:
                 emoji = "❌"
-            lines.append(f"  {emoji} [{item['priority']}] {item['title']}")
+                fail_count += 1
+            task_lines.append(f"  {emoji} *[{item['priority']}] {item['title']}*")
 
-        done = sum(1 for i in detailed["items"] if i["status"] == "done")
-        total = len(detailed["items"])
-        lines.append(f"\n*📊 진행률: {done}/{total}*")
+    total = done_count + fail_count
 
-    if iterations:
-        lines.append(f"🔄 반복: {iterations}회")
+    # 결과 이모지
+    if fail_count == 0 and total > 0:
+        result_emoji = "🟢"
+        result_text = "전체 성공"
+    elif fail_count > 0 and done_count > 0:
+        result_emoji = "🟡"
+        result_text = "부분 성공"
+    elif total == 0:
+        result_emoji = "⚪"
+        result_text = "처리 대상 없음"
+    else:
+        result_emoji = "🔴"
+        result_text = "실패"
+
+    lines = []
+    lines.append(f"{result_emoji} *자동 개발 파이프라인 — {result_text}*")
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
+    lines.append(f"🕐 {now.strftime('%Y-%m-%d %H:%M')}")
+    lines.append("")
+
+    # 요구사항 처리 결과
+    if task_lines:
+        lines.append("📋 *요구사항 처리 결과*")
+        lines.append("─────────────────")
+        lines.extend(task_lines)
+        lines.append("")
+
+    # 요약 통계 블록
+    lines.append("📊 *결과 요약*")
+    lines.append("─────────────────")
+    stat_parts = [f"완료: {done_count}건", f"실패: {fail_count}건"]
+    lines.append(f"  {' | '.join(stat_parts)}")
+
+    if iterations and iterations != "N/A":
+        lines.append(f"  반복: {iterations}회")
 
     if test_result:
-        lines.append(f"🧪 테스트: {test_result}")
+        lines.append(f"  테스트: {test_result}")
 
-    # 변경 파일 요약
     file_summary = get_changed_files_summary()
     if file_summary:
-        lines.append(f"📁 변경: {file_summary}")
+        lines.append(f"  파일: {file_summary}")
 
     # 최근 커밋
     commits = get_recent_commits(5)
     if commits:
         lines.append("")
-        lines.append("*🔨 주요 커밋*")
+        lines.append("🔨 *주요 커밋*")
+        lines.append("─────────────────")
         for c in commits:
-            lines.append(f"  • {c}")
+            lines.append(f"  `{c}`")
 
     # 최종 상태
-    has_failures = False
-    if os.path.exists(result_path):
-        with open(result_path) as f2:
-            d = json.load(f2)
-        has_failures = d.get("fail_count", 0) > 0
-        fc = d.get("fail_count", 0)
-
     lines.append("")
-    if has_failures:
-        lines.append(f"⏳ 실패 {fc}건 — Backlog로 이동됨")
-    else:
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
+    if fail_count > 0:
+        lines.append(f"⏳ 실패 {fail_count}건 → Backlog 이동")
+    elif total > 0:
         lines.append("🎉 *모든 요구사항 처리 완료!*")
 
     return "\n".join(lines)
@@ -377,6 +432,11 @@ def cmd_pipeline_report(args):
 
 
 def main():
+    sys.path.insert(0, os.path.dirname(__file__))
+    from pipeline_config import check_enabled
+
+    check_enabled("FLOWOPS_TELEGRAM", "Telegram 알림")
+
     parser = argparse.ArgumentParser(description="Telegram notification for Ralph Loop")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--message", help="Send a simple text message")

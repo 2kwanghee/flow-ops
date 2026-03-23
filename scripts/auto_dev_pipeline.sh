@@ -16,6 +16,9 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
 
+# 모듈 토글 로드
+source "$PROJECT_DIR/scripts/pipeline_config.sh" 2>/dev/null || true
+
 LOCK_FILE=".ralph/.pipeline_lock"
 TASK_MAPPING=".ralph/.task_mapping.json"
 LOG_PREFIX="[$(date '+%Y-%m-%d %H:%M:%S')]"
@@ -60,6 +63,12 @@ echo "$LOG_PREFIX   자동 개발 파이프라인 v4 시작"
 echo "$LOG_PREFIX ======================================="
 
 # ── Step 1: Linear 요구사항 감지 (태스크별 분리 모드) ──
+if ! is_enabled "FLOWOPS_LINEAR_WATCHER" 2>/dev/null; then
+  echo "$LOG_PREFIX SKIP: Linear Watcher 비활성화됨 (FLOWOPS_LINEAR_WATCHER=false)"
+  echo "$LOG_PREFIX 수동으로 .ralph/tasks/ 에 fix_plan을 준비하세요."
+  exit 0
+fi
+
 echo "$LOG_PREFIX [1/3] Linear 요구사항 감지 중 (per-task 모드)..."
 WATCHER_OUTPUT=$(python3 scripts/linear_watcher.py --per-task 2>&1) || WATCHER_EXIT=$?
 WATCHER_EXIT=${WATCHER_EXIT:-0}
@@ -157,7 +166,8 @@ for title, meta in m.items():
      export RALPH_MAX_ITERATIONS=$MAX_ITERATIONS && \
      rm -f .ralph/.iteration_count && \
      claude -p \"\$(cat .ralph/PROMPT.md)\" --dangerously-skip-permissions ${MAX_TURNS:+--max-turns $MAX_TURNS}; \
-     cd '$PROJECT_DIR' && python3 scripts/linear_reporter.py --task-id '$ISSUE_KEY'; \
+     cp '$WORKTREE_DIR/.ralph/fix_plan.md' '$PROJECT_DIR/.ralph/fix_plan.md' 2>/dev/null || true; \
+     cd '$PROJECT_DIR' && python3 scripts/linear_reporter.py --task-id '$ISSUE_KEY' 2>&1 || true; \
      cd '$PROJECT_DIR' && python3 scripts/auto_pr_creator.py --branch '$BRANCH' --auto-merge 2>&1 || true; \
      echo '[DONE] $TITLE'" \
     || { echo "$LOG_PREFIX ERROR: tmux 세션 생성 실패: $SESSION_NAME"; continue; }
@@ -195,15 +205,23 @@ cp ".ralph/.task_mapping_full.json" "$TASK_MAPPING"
 echo ""
 echo "$LOG_PREFIX [3/3] Telegram 완료 보고 전송..."
 
-# 테스트 결과
-cd "$PROJECT_DIR/backend"
-TEST_RESULT=$(.venv/bin/python -m pytest --tb=no -q 2>&1 | tail -1 || echo "테스트 실행 실패")
-cd "$PROJECT_DIR"
+if is_enabled "FLOWOPS_TELEGRAM" 2>/dev/null; then
+  # 테스트 결과
+  if [ -d "$PROJECT_DIR/backend" ]; then
+    cd "$PROJECT_DIR/backend"
+    TEST_RESULT=$(.venv/bin/python -m pytest --tb=no -q 2>&1 | tail -1 || echo "테스트 실행 실패")
+    cd "$PROJECT_DIR"
+  else
+    TEST_RESULT="backend 디렉토리 없음 (테스트 스킵)"
+  fi
 
-python3 scripts/telegram_notify.py \
-  --pipeline-report \
-  --iterations "N/A" \
-  --test-result "$TEST_RESULT" 2>/dev/null || true
+  python3 scripts/telegram_notify.py \
+    --pipeline-report \
+    --iterations "N/A" \
+    --test-result "$TEST_RESULT" 2>/dev/null || true
+else
+  echo "$LOG_PREFIX SKIP: Telegram 알림 비활성화됨"
+fi
 
 # ── 잔류 데이터 정리 (Telegram 보고 후 수행) ──
 rm -f "$TASK_MAPPING" ".ralph/.task_mapping_full.json" ".ralph/.pipeline_result.json"

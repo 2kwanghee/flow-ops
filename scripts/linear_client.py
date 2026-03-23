@@ -28,7 +28,7 @@ def get_env():
                 if line.startswith("#") or "=" not in line:
                     continue
                 k, v = line.split("=", 1)
-                k, v = k.strip(), v.strip()
+                k, v = k.strip(), v.strip().strip("\"'")
                 if k == "LINEAR_API_KEY":
                     api_key = v
                 elif k == "LINEAR_TEAM_ID":

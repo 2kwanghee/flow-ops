@@ -290,6 +290,10 @@ def post_pr_comment(pr_number: int, comment: str):
 
 
 def main():
+    from pipeline_config import check_enabled
+
+    check_enabled("FLOWOPS_GPT_REVIEW", "ChatGPT 코드 리뷰")
+
     parser = argparse.ArgumentParser(description="ChatGPT FC PR 코드 리뷰")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--pr", type=int, help="PR 번호")

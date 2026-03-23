@@ -40,7 +40,7 @@ def fetch_queued_issues(api_key: str, team_id: str) -> list[dict]:
                 team: { id: { eq: $teamId } }
                 state: { name: { eq: "Queued" } }
             }
-            orderBy: priority
+            orderBy: createdAt
         ) {
             nodes {
                 id
@@ -59,7 +59,11 @@ def fetch_queued_issues(api_key: str, team_id: str) -> list[dict]:
     data = linear_request(api_key, query, {"teamId": team_id})
     if not data:
         return []
-    return data.get("issues", {}).get("nodes", [])
+    nodes = data.get("issues", {}).get("nodes", [])
+    # Linear API doesn't support orderBy: priority, sort client-side
+    # priority: 0=No priority, 1=Urgent, 2=High, 3=Medium, 4=Low
+    nodes.sort(key=lambda x: x.get("priority", 0) or 99)
+    return nodes
 
 
 def extract_task_info(issue: dict) -> dict:
@@ -194,6 +198,9 @@ def save_task_mapping(tasks: list[dict]):
 
 def main():
     import argparse
+    from pipeline_config import check_enabled
+
+    check_enabled("FLOWOPS_LINEAR_WATCHER", "Linear 요구사항 감지")
 
     parser = argparse.ArgumentParser(description="Linear 요구사항 감지기")
     parser.add_argument("--dry-run", action="store_true", help="조회만 수행, 변경 없음")

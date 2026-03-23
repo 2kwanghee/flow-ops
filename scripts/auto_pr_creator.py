@@ -221,12 +221,20 @@ def create_pr(branch: str, title: str, body: str, auto_merge: bool = False) -> s
 
 
 def main():
+    from pipeline_config import check_enabled, is_enabled
+
+    check_enabled("FLOWOPS_AUTO_PR", "PR 자동 생성")
+
     parser = argparse.ArgumentParser(description="Ralph Loop 자동 PR 생성")
     parser.add_argument("--branch", required=True, help="PR 소스 브랜치 (e.g., ralph/OPS-123)")
     parser.add_argument("--auto-merge", action="store_true",
                         help="CI 통과 시 자동 squash-merge 설정")
     parser.add_argument("--dry-run", action="store_true", help="PR body만 출력, 실제 생성 안 함")
     args = parser.parse_args()
+
+    # FLOWOPS_AUTO_MERGE가 false이면 --auto-merge 플래그 무시
+    if not is_enabled("FLOWOPS_AUTO_MERGE"):
+        args.auto_merge = False
 
     branch = args.branch
     identifier = extract_identifier(branch)
@@ -279,14 +287,15 @@ def main():
         print(f"\nPR_URL: {pr_url}")
 
         # Telegram 알림
-        try:
-            subprocess.run(
-                ["python3", os.path.join(PROJECT_DIR, "scripts", "telegram_notify.py"),
-                 "--message", f"PR 생성됨: {pr_title}\n{pr_url}"],
-                capture_output=True, text=True, cwd=PROJECT_DIR,
-            )
-        except Exception:
-            pass
+        if is_enabled("FLOWOPS_TELEGRAM"):
+            try:
+                subprocess.run(
+                    ["python3", os.path.join(PROJECT_DIR, "scripts", "telegram_notify.py"),
+                     "--message", f"PR 생성됨: {pr_title}\n{pr_url}"],
+                    capture_output=True, text=True, cwd=PROJECT_DIR,
+                )
+            except Exception:
+                pass
     else:
         sys.exit(1)
 

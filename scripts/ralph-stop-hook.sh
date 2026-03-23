@@ -9,6 +9,14 @@ set -euo pipefail
 
 # git worktree 환경에서도 올바른 프로젝트 루트 감지
 PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || (cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd))"
+
+# 모듈 토글 체크
+source "$PROJECT_DIR/scripts/pipeline_config.sh" 2>/dev/null || true
+if ! is_enabled "FLOWOPS_RALPH_STOP_HOOK" 2>/dev/null; then
+  echo '{"decision": "allow", "reason": "Ralph Stop Hook 비활성화됨 (FLOWOPS_RALPH_STOP_HOOK=false)"}'
+  exit 0
+fi
+
 FIX_PLAN="$PROJECT_DIR/.ralph/fix_plan.md"
 STATE_FILE="$PROJECT_DIR/.ralph/.iteration_count"
 
@@ -24,9 +32,11 @@ echo "$COUNT" > "$STATE_FILE"
 # max-iterations 확인 (환경변수로 전달, 기본 30)
 MAX_ITER="${RALPH_MAX_ITERATIONS:-30}"
 if [ "$COUNT" -gt "$MAX_ITER" ]; then
-  python3 "$PROJECT_DIR/scripts/telegram_notify.py" \
-    --ralph-report \
-    --iterations "${COUNT}/${MAX_ITER} (max 도달)" 2>/dev/null || true
+  if is_enabled "FLOWOPS_TELEGRAM" 2>/dev/null; then
+    python3 "$PROJECT_DIR/scripts/telegram_notify.py" \
+      --ralph-report \
+      --iterations "${COUNT}/${MAX_ITER} (max 도달)" 2>/dev/null || true
+  fi
   echo "{\"decision\": \"allow\", \"reason\": \"max-iterations($MAX_ITER) 도달. 강제 종료.\"}"
   exit 0
 fi
@@ -74,17 +84,19 @@ fi
 
 # ── 모든 조건 충족 -> 종료 허용 ──
 # Telegram 상세 완료 보고 전송
-# 파이프라인 결과 파일이 있으면 상세 보고, 없으면 기본 보고
-if [ -f "$PROJECT_DIR/.ralph/.task_mapping.json" ]; then
-  python3 "$PROJECT_DIR/scripts/telegram_notify.py" \
-    --pipeline-report \
-    --iterations "$COUNT" \
-    --test-result "$TEST_RESULT" 2>/dev/null || true
-else
-  python3 "$PROJECT_DIR/scripts/telegram_notify.py" \
-    --ralph-report \
-    --iterations "$COUNT" \
-    --test-result "$TEST_RESULT" 2>/dev/null || true
+if is_enabled "FLOWOPS_TELEGRAM" 2>/dev/null; then
+  # 파이프라인 결과 파일이 있으면 상세 보고, 없으면 기본 보고
+  if [ -f "$PROJECT_DIR/.ralph/.task_mapping.json" ]; then
+    python3 "$PROJECT_DIR/scripts/telegram_notify.py" \
+      --pipeline-report \
+      --iterations "$COUNT" \
+      --test-result "$TEST_RESULT" 2>/dev/null || true
+  else
+    python3 "$PROJECT_DIR/scripts/telegram_notify.py" \
+      --ralph-report \
+      --iterations "$COUNT" \
+      --test-result "$TEST_RESULT" 2>/dev/null || true
+  fi
 fi
 
 # iteration 카운터 정리

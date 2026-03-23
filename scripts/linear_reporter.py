@@ -176,6 +176,9 @@ def update_issue_result(api_key: str, team_id: str, issue_id: str, report_text: 
 
 def main():
     import argparse
+    from pipeline_config import check_enabled
+
+    check_enabled("FLOWOPS_LINEAR_REPORT", "Linear 결과 보고")
 
     parser = argparse.ArgumentParser(description="Ralph Loop 결과 Linear 보고")
     parser.add_argument("--dry-run", action="store_true", help="조회만 수행, 변경 없음")

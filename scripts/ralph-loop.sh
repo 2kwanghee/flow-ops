@@ -6,8 +6,11 @@
 #   nohup bash scripts/ralph-loop.sh > ralph-session.log 2>&1 &  # 오버나이트
 set -euo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]})/.." && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
+
+# 모듈 토글 체크
+source "$PROJECT_DIR/scripts/pipeline_config.sh" 2>/dev/null || true
 
 # ── 파라미터 파싱 ──
 MAX_ITERATIONS=30

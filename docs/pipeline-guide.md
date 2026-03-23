@@ -17,7 +17,7 @@
                         │  (태스크 분해+등록)   │  또는 수동 등록
                         └─────────┬───────────┘
                                   ↓
-┌──────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────┐먀
 │                     Linear (Queued)                          │
 └──────────┬──────────────────────────────────┬────────────────┘
            │                                  │
@@ -326,70 +326,10 @@ Backlog ──(수동)──→ Todo ──(수동)──→ Queued
 
 ---
 
-## 필수 환경 설정
+## 환경 설정
 
-### 환경변수 (.env 또는 settings.json env)
-
-```env
-# Linear (필수)
-LINEAR_API_KEY=<Linear Personal API Key>
-LINEAR_TEAM_ID=<Team UUID>
-
-# GitHub CLI (필수 — PR 자동 생성)
-# gh auth login 으로 인증
-
-# OpenAI (선택 — Fix Plan + AI 리뷰)
-OPENAI_API_KEY=<OpenAI API Key>
-
-# Telegram (선택 — 알림)
-TELEGRAM_BOT_TOKEN=<Bot Token>
-TELEGRAM_CHAT_ID=<Chat ID>
-
-# Webhook (선택 — 서명 검증)
-WEBHOOK_SECRET=<Linear webhook signing secret>
-```
-
-### GitHub Secrets (CI/CD용)
-
-GitHub 리포지토리 Settings → Secrets → Actions:
-
-| Secret | 용도 |
-|--------|------|
-| `OPENAI_API_KEY` | AI 코드 리뷰 |
-| `LINEAR_API_KEY` | post-merge Linear 업데이트 |
-| `LINEAR_TEAM_ID` | post-merge Linear 업데이트 |
-| `TELEGRAM_BOT_TOKEN` | post-merge Telegram 알림 |
-| `TELEGRAM_CHAT_ID` | post-merge Telegram 알림 |
-
-### GitHub Branch Protection
-
-Settings → Branches → main:
-- [x] Require status checks to pass before merging
-- [x] Require branches to be up to date before merging
-- Status checks: `Backend (pytest + ruff)`, `Frontend (lint + build)`
+환경변수, GitHub Secrets, Branch Protection 설정은 **[docs/setupClaude.md](setupClaude.md)**를 참조하세요.
 
 ---
 
-## Quick Start
-
-```bash
-# 1. Webhook 서버 + ngrok 시작
-nohup python3 scripts/webhook_server.py > logs/webhook.log 2>&1 &
-nohup ~/bin/ngrok http 9876 > logs/ngrok.log 2>&1 &
-
-# 2. Linear Webhook 등록 (1회)
-#    URL: https://<ngrok-url>/webhook/linear
-#    이벤트: Issues
-
-# 3. Linear에 이슈 등록 (상태: Queued)
-#    → 자동으로 파이프라인 실행됨
-
-# 4. 모니터링
-tail -f logs/webhook.log          # Webhook 이벤트
-tmux list-sessions | grep ralph   # Claude 세션
-```
-
----
-
-*이 문서는 `docs/setupClaude.md`(초기 셋업)의 보충 자료입니다.*
-*파이프라인 운영과 트리거에 초점을 맞추고 있습니다.*
+*초기 셋업: [docs/setupClaude.md](setupClaude.md) | 스킬 가이드: [docs/skills.md](skills.md)*

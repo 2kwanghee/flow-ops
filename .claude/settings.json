@@ -1,10 +1,10 @@
 {
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
-    "OPENAI_API_KEY": "",
-    "GEMINI_API_KEY": "",
-    "LINEAR_API_KEY": "",
-    "LINEAR_TEAM_ID": ""
+    "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+    "GEMINI_API_KEY": "${GEMINI_API_KEY}",
+    "LINEAR_API_KEY": "${LINEAR_API_KEY}",
+    "LINEAR_TEAM_ID": "${LINEAR_TEAM_ID}"
   },
   "permissions": {
     "allow": [
@@ -79,7 +79,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '[TODO] 작업 시작 전 TODO.md를 확인/생성하세요. 새 작업이면 기존 TODO.md를 초기화 후 새로 작성하세요.' >&2"
+            "command": "source \"$CLAUDE_PROJECT_DIR/scripts/pipeline_config.sh\" 2>/dev/null && is_enabled FLOWOPS_TODO_REMINDER 2>/dev/null && echo '[TODO] 작업 시작 전 TODO.md를 확인/생성하세요. 새 작업이면 기존 TODO.md를 초기화 후 새로 작성하세요.' >&2 || true"
           }
         ]
       }

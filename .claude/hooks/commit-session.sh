@@ -10,6 +10,12 @@ set -euo pipefail
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || REPO_ROOT="$CLAUDE_PROJECT_DIR"
 cd "$REPO_ROOT" || exit 0
 
+# 모듈 토글 체크
+source "$REPO_ROOT/scripts/pipeline_config.sh" 2>/dev/null || true
+if ! is_enabled "FLOWOPS_AUTO_COMMIT" 2>/dev/null; then
+  exit 0
+fi
+
 # Stage all changes
 git add -A 2>/dev/null || true
 
